@@ -1,173 +1,149 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, scrolledtext
 import json
 import os
+import random
 
-class BookTrackerApp:
+class RandomTaskGenerator:
     def __init__(self, root):
         self.root = root
-        self.root.title("Book Tracker")
-        self.books = []
+        self.root.title("Random Task Generator")
+        
+        # Предопределённые задачи с типами
+        self.default_tasks = [
+            {"task": "Прочитать статью", "type": "Учёба"},
+            {"task": "Сделать зарядку", "type": "Спорт"},
+            {"task": "Написать отчёт", "type": "Работа"},
+            {"task": "Изучить новую тему", "type": "Учёба"},
+            {"task": "Пробежка 3 км", "type": "Спорт"},
+            {"task": "Провести встречу", "type": "Работа"}
+        ]
+        
+        self.tasks = self.default_tasks.copy()
+        self.history = []
         self.load_data()
-
-        # Поля ввода
-        tk.Label(root, text="Название книги:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        self.title_entry = tk.Entry(root, width=30)
-        self.title_entry.grid(row=0, column=1, padx=5, pady=2)
-
-        tk.Label(root, text="Автор:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        self.author_entry = tk.Entry(root, width=30)
-        self.author_entry.grid(row=1, column=1, padx=5, pady=2)
-
-        tk.Label(root, text="Жанр:").grid(row=2, column=0, sticky="w", padx=5, pady=2)
-        self.genre_entry = tk.Entry(root, width=30)
-        self.genre_entry.grid(row=2, column=1, padx=5, pady=2)
-
-        tk.Label(root, text="Количество страниц:").grid(row=3, column=0, sticky="w", padx=5, pady=2)
-        self.pages_entry = tk.Entry(root, width=30)
-        self.pages_entry.grid(row=3, column=1, padx=5, pady=2)
-
-        # Кнопка добавления
-        tk.Button(root, text="Добавить книгу", command=self.add_book).grid(row=4, column=0, columnspan=2, pady=10)
-
-        # Таблица для отображения книг
-        self.tree = ttk.Treeview(root, columns=("Title", "Author", "Genre", "Pages"), show="headings")
-        self.tree.heading("Title", text="Название")
-        self.tree.heading("Author", text="Автор")
-        self.tree.heading("Genre", text="Жанр")
-        self.tree.heading("Pages", text="Страниц")
-        self.tree.grid(row=5, column=0, columnspan=2, padx=5, pady=5)
-
-        # Фильтры
-        tk.Label(root, text="Фильтр по жанру:").grid(row=6, column=0, sticky="w", padx=5, pady=2)
-        self.filter_genre = tk.Entry(root, width=30)
-        self.filter_genre.grid(row=6, column=1, padx=5, pady=2)
-
-        tk.Label(root, text="Фильтр страниц (>):").grid(row=7, column=0, sticky="w", padx=5, pady=2)
-        self.filter_pages = tk.Entry(root, width=30)
-        self.filter_pages.grid(row=7, column=1, padx=5, pady=2)
-
-
-        tk.Button(root, text="Применить фильтры", command=self.apply_filters).grid(row=8, column=0, columnspan=2, pady=5)
-        tk.Button(root, text="Сбросить фильтры", command=self.reset_filters).grid(row=9, column=0, columnspan=2, pady=5)
-
+        
+        self.setup_ui()
+    
+    def setup_ui(self):
+        # Поле для добавления новой задачи
+        tk.Label(self.root, text="Новая задача:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        self.new_task_entry = tk.Entry(self.root, width=30)
+        self.new_task_entry.grid(row=0, column=1, padx=5, pady=2)
+        
+        # Выбор типа задачи
+        tk.Label(self.root, text="Тип задачи:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        self.task_type = ttk.Combobox(self.root, values=["Учёба", "Спорт", "Работа"], width=27)
+        self.task_type.set("Учёба")
+        self.task_type.grid(row=1, column=1, padx=5, pady=2)
+        
+        # Кнопка добавления задачи
+        tk.Button(self.root, text="Добавить задачу", command=self.add_task).grid(row=2, column=0, columnspan=2, pady=5)
+        
+        # Кнопка генерации случайной задачи
+        tk.Button(self.root, text="Сгенерировать задачу", command=self.generate_random_task, bg="lightgreen").grid(row=3, column=0, columnspan=2, pady=10)
+        
+        # Отображение текущей задачи
+        tk.Label(self.root, text="Текущая задача:").grid(row=4, column=0, sticky="w", padx=5, pady=2)
+        self.current_task_label = tk.Label(self.root, text="Нажмите 'Сгенерировать'", font=("Arial", 10, "bold"), fg="blue")
+        self.current_task_label.grid(row=4, column=1, padx=5, pady=2, sticky="w")
+        
+        # Фильтр по типу
+        tk.Label(self.root, text="Фильтр по типу:").grid(row=5, column=0, sticky="w", padx=5, pady=2)
+        self.filter_type = ttk.Combobox(self.root, values=["Все", "Учёба", "Спорт", "Работа"], width=27)
+        self.filter_type.set("Все")
+        self.filter_type.grid(row=5, column=1, padx=5, pady=2)
+        tk.Button(self.root, text="Применить фильтр", command=self.apply_filter).grid(row=6, column=0, pady=5)
+        tk.Button(self.root, text="Сбросить фильтр", command=self.reset_filter).grid(row=6, column=1, pady=5)
+        
+        # История задач (прокручиваемый текст)
+        tk.Label(self.root, text="История задач:").grid(row=7, column=0, sticky="w", padx=5, pady=2)
+        self.history_text = scrolledtext.ScrolledText(self.root, width=40, height=12)
+        self.history_text.grid(row=8, column=0, columnspan=2, padx=5, pady=5)
+        
         # Кнопки сохранения/загрузки
-        tk.Button(root, text="Сохранить данные", command=self.save_data).grid(row=10, column=0, pady=5)
-        tk.Button(root, text="Загрузить данные", command=self.load_data).grid(row=10, column=1, pady=5)
-
-    def add_book(self):
-        title = self.title_entry.get().strip()
-        author = self.author_entry.get().strip()
-        genre = self.genre_entry.get().strip()
-
-        # Проверка на пустые поля
-        if not title or not author or not genre:
-            messagebox.showerror("Ошибка", "Все поля, кроме количества страниц, должны быть заполнены")
+        tk.Button(self.root, text="Сохранить историю", command=self.save_history).grid(row=9, column=0, pady=5)
+        tk.Button(self.root, text="Загрузить историю", command=self.load_history).grid(row=9, column=1, pady=5)
+        
+        # Обновляем отображение истории
+        self.update_history_display()
+    
+    def add_task(self):
+        task_text = self.new_task_entry.get().strip()
+        task_type = self.task_type.get()
+        
+        if not task_text:
+            messagebox.showerror("Ошибка", "Задача не может быть пустой!")
             return
-
-        # Проверка количества страниц
-        pages_text = self.pages_entry.get().strip()
-        if pages_text:
-            try:
-                pages = int(pages_text)
-                if pages <= 0:
-                    messagebox.showerror("Ошибка", "Количество страниц должно быть положительным числом")
-                    return
-            except ValueError:
-                messagebox.showerror("Ошибка", "Количество страниц должно быть числом")
-                return
-        else:
-            pages = 0  # Если поле пустое, устанавливаем 0
-
-        # Добавляем книгу в список
-        book = {
-            "title": title,
-            "author": author,
-            "genre": genre,
-            "pages": pages
-        }
-        self.books.append(book)
-
-        # Обновляем таблицу
-        self.update_table()
-
-        # Очищаем поля ввода
-        self.clear_entries()
-
-    def clear_entries(self):
-        self.title_entry.delete(0, tk.END)
-        self.author_entry.delete(0, tk.END)
-        self.genre_entry.delete(0, tk.END)
-        self.pages_entry.delete(0, tk.END)
-
-    def apply_filters(self):
-        filtered_books = self.books
-
-        # Фильтр по жанру
-        genre_filter = self.filter_genre.get().strip().lower()
-        if genre_filter:
-            filtered_books = [book for book in filtered_books if genre_filter in book["genre"].lower()]
-
-        # Фильтр по страницам
-        pages_filter_text = self.filter_pages.get().strip()
-        if pages_filter_text:
-            try:
-                min_pages = int(pages_filter_text)
-                filtered_books = [book for book in filtered_books if book["pages"] >= min_pages
-            except ValueError:
-                messagebox.showerror("Ошибка", "Введите корректное число для фильтра страниц")
-                return
-
-        # Обновляем таблицу с отфильтрованными данными
-        self.update_table(filtered_books)
-
-    def reset_filters(self):
-        self.filter_genre.delete(0, tk.END)
-        self.filter_pages.delete(0, tk.END)
-        self.update_table()
-
-    def save_data(self):
+        
+        new_task = {"task": task_text, "type": task_type}
+        self.tasks.append(new_task)
+        self.new_task_entry.delete(0, tk.END)
+        messagebox.showinfo("Успех", "Задача добавлена!")
+    
+    def generate_random_task(self):
+        if not self.tasks:
+            messagebox.showwarning("Предупреждение", "Нет задач для генерации!")
+            return
+        
+        current_task = random.choice(self.tasks)
+        task_text = current_task["task"]
+        task_type = current_task["type"]
+        
+        full_task = f"{task_text} [{task_type}]"
+        self.current_task_label.config(text=full_task)
+        
+        # Добавляем в историю
+        self.history.append(full_task)
+        self.update_history_display()
+    
+    def update_history_display(self, filtered_history=None):
+        self.history_text.delete(1.0, tk.END)
+        display_list = filtered_history if filtered_history else self.history
+        
+        for i, task in enumerate(display_list, 1):
+            self.history_text.insert(tk.END, f"{i}. {task}\n")
+    
+    def apply_filter(self):
+        filter_type = self.filter_type.get()
+        if filter_type == "Все":
+            self.update_history_display()
+            return
+        filtered = [task for task in self.history if f"[{filter_type}]" in task]
+        self.update_history_display(filtered)
+    
+    def reset_filter(self):
+        self.filter_type.set("Все")
+        self.update_history_display()
+    
+    def save_history(self):
         try:
-            with open("books.json", "w", encoding="utf-8") as f:
-                json.dump(self.books, f, ensure_ascii=False, indent=4)
-            messagebox.showinfo("Успех", "Данные сохранены в books.json")
+            data = {
+                "tasks": self.tasks,
+                "history": self.history
+            }
+            with open("task_history.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            messagebox.showinfo("Успех", "История сохранена в task_history.json")
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить данные: {e}")
-
-
-    def load_data(self):
-        if os.path.exists("books.json"):
+            messagebox.showerror("Ошибка", f"Не удалось сохранить: {e}")
+    
+    def load_history(self):
+        if os.path.exists("task_history.json"):
             try:
-                with open("books.json", "r", encoding="utf-8") as f:
-                    self.books = json.load(f)
-                self.update_table()
-                messagebox.showinfo("Успех", "Данные загружены из books.json")
+                with open("task_history.json", "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.tasks = data.get("tasks", self.default_tasks)
+                    self.history = data.get("history", [])
+                self.update_history_display()
+                messagebox.showinfo("Успех", "Данные загружены из task_history.json")
             except Exception as e:
-                messagebox.showerror("Ошибка", f"Не удалось загрузить данные: {e}")
+                messagebox.showerror("Ошибка", f"Не удалось загрузить: {e}")
         else:
-            self.books = []
-            self.update_table()
-
-    def update_table(self, books=None):
-        # Очищаем таблицу
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-
-        # Если книги не переданы, используем все
-        if books is None:
-            books = self.books
-
-        # Заполняем таблицу
-        for book in books:
-            self.tree.insert("", "end", values=(
-                book["title"],
-                book["author"],
-                book["genre"],
-                book["pages"] if book["pages"] > 0 else "Не указано"
-            ))
+            messagebox.showwarning("Предупреждение", "Файл истории не найден!")
 
 # Запуск приложения
 if __name__ == "__main__":
     root = tk.Tk()
-    app = BookTrackerApp(root)
+    app = RandomTaskGenerator(root)
     root.mainloop()
