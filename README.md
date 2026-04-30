@@ -102,146 +102,177 @@ import json
 import os
 import random
 
-class RandomTaskGenerator:
+import tkinter as tk
+from tkinter import ttk, messagebox, scrolledtext
+import json
+import os
+import requests
+
+class GitHubUserTracker:
     def __init__(self, root):
         self.root = root
-        self.root.title("Random Task Generator")
-        
-        # Предопределённые задачи с типами
-        self.default_tasks = [
-            {"task": "Прочитать статью", "type": "Учёба"},
-            {"task": "Сделать зарядку", "type": "Спорт"},
-            {"task": "Написать отчёт", "type": "Работа"},
-            {"task": "Изучить новую тему", "type": "Учёба"},
-            {"task": "Пробежка 3 км", "type": "Спорт"},
-            {"task": "Провести встречу", "type": "Работа"}
-        ]
-        
-        self.tasks = self.default_tasks.copy()
-        self.history = []
-        self.load_data()
-        
+        self.root.title("GitHub User Tracker")
+
+        # Данные
+        self.found_users = []
+        self.favorites = []
+        self.load_favorites()
+
         self.setup_ui()
-    
+
     def setup_ui(self):
-        # Поле для добавления новой задачи
-        tk.Label(self.root, text="Новая задача:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        self.new_task_entry = tk.Entry(self.root, width=30)
-        self.new_task_entry.grid(row=0, column=1, padx=5, pady=2)
-        
-        # Выбор типа задачи
-        tk.Label(self.root, text="Тип задачи:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        self.task_type = ttk.Combobox(self.root, values=["Учёба", "Спорт", "Работа"], width=27)
-        self.task_type.set("Учёба")
-        self.task_type.grid(row=1, column=1, padx=5, pady=2)
-        
-        # Кнопка добавления задачи
-        tk.Button(self.root, text="Добавить задачу", command=self.add_task).grid(row=2, column=0, columnspan=2, pady=5)
-        
-        # Кнопка генерации случайной задачи
-        tk.Button(self.root, text="Сгенерировать задачу", command=self.generate_random_task, bg="lightgreen").grid(row=3, column=0, columnspan=2, pady=10)
-        
-        # Отображение текущей задачи
-        tk.Label(self.root, text="Текущая задача:").grid(row=4, column=0, sticky="w", padx=5, pady=2)
-        self.current_task_label = tk.Label(self.root, text="Нажмите 'Сгенерировать'", font=("Arial", 10, "bold"), fg="blue")
-        self.current_task_label.grid(row=4, column=1, padx=5, pady=2, sticky="w")
-        
-        # Фильтр по типу
-        tk.Label(self.root, text="Фильтр по типу:").grid(row=5, column=0, sticky="w", padx=5, pady=2)
-        self.filter_type = ttk.Combobox(self.root, values=["Все", "Учёба", "Спорт", "Работа"], width=27)
-        self.filter_type.set("Все")
-        self.filter_type.grid(row=5, column=1, padx=5, pady=2)
-        tk.Button(self.root, text="Применить фильтр", command=self.apply_filter).grid(row=6, column=0, pady=5)
-        tk.Button(self.root, text="Сбросить фильтр", command=self.reset_filter).grid(row=6, column=1, pady=5)
-        
-        # История задач (прокручиваемый текст)
-        tk.Label(self.root, text="История задач:").grid(row=7, column=0, sticky="w", padx=5, pady=2)
-        self.history_text = scrolledtext.ScrolledText(self.root, width=40, height=12)
-        self.history_text.grid(row=8, column=0, columnspan=2, padx=5, pady=5)
-        
-        # Кнопки сохранения/загрузки
-        tk.Button(self.root, text="Сохранить историю", command=self.save_history).grid(row=9, column=0, pady=5)
-        tk.Button(self.root, text="Загрузить историю", command=self.load_history).grid(row=9, column=1, pady=5)
-        
-        # Обновляем отображение истории
-        self.update_history_display()
-    
-    def add_task(self):
-        task_text = self.new_task_entry.get().strip()
-        task_type = self.task_type.get()
-        
-        if not task_text:
-            messagebox.showerror("Ошибка", "Задача не может быть пустой!")
+        # Поле для ввода имени пользователя GitHub
+        tk.Label(self.root, text="Имя пользователя GitHub:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        self.username_entry = tk.Entry(self.root, width=30)
+        self.username_entry.grid(row=0, column=1, padx=5, pady=2)
+
+        # Кнопка поиска
+        tk.Button(self.root, text="Найти пользователя", command=self.search_github_user, bg="lightblue").grid(
+            row=1, column=0, columnspan=2, pady=5
+        )
+
+        # Отображение результатов поиска
+        tk.Label(self.root, text="Найденные пользователи:").grid(row=2, column=0, sticky="w", padx=5, pady=2)
+        self.results_text = scrolledtext.ScrolledText(self.root, width=50, height=8)
+        self.results_text.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
+
+        # Кнопки для работы с избранным
+        tk.Button(self.root, text="Добавить в избранное", command=self.add_to_favorites).grid(row=4, column=0, pady=5)
+        tk.Button(self.root, text="Удалить из избранного", command=self.remove_from_favorites).grid(row=4, column=1, pady=5)
+
+        # Отображение избранных пользователей
+        tk.Label(self.root, text="Избранные пользователи:").grid(row=5, column=0, sticky="w", padx=5, pady=2)
+        self.favorites_text = scrolledtext.ScrolledText(self.root, width=50, height=8)
+        self.favorites_text.grid(row=6, column=0, columnspan=2, padx=5, pady=5)
+
+        # Кнопки сохранения/загрузки избранного
+        tk.Button(self.root, text="Сохранить избранное", command=self.save_favorites).grid(row=7, column=0, pady=5)
+        tk.Button(self.root, text="Загрузить избранное", command=self.load_favorites).grid(row=7, column=1, pady=5)
+
+        # Обновляем отображение избранного
+        self.update_favorites_display()
+
+    def search_github_user(self):
+        username = self.username_entry.get().strip()
+
+        # Валидация ввода
+        if not username:
+            messagebox.showerror("Ошибка", "Введите имя пользователя GitHub!")
             return
-        
-        new_task = {"task": task_text, "type": task_type}
-        self.tasks.append(new_task)
-        self.new_task_entry.delete(0, tk.END)
-        messagebox.showinfo("Успех", "Задача добавлена!")
-    
-    def generate_random_task(self):
-        if not self.tasks:
-            messagebox.showwarning("Предупреждение", "Нет задач для генерации!")
+
+        if ' ' in username:
+            messagebox.showerror("Ошибка", "Имя пользователя не должно содержать пробелов!")
             return
-        
-        current_task = random.choice(self.tasks)
-        task_text = current_task["task"]
-        task_type = current_task["type"]
-        
-        full_task = f"{task_text} [{task_type}]"
-        self.current_task_label.config(text=full_task)
-        
-        # Добавляем в историю
-        self.history.append(full_task)
-        self.update_history_display()
-    
-    def update_history_display(self, filtered_history=None):
-        self.history_text.delete(1.0, tk.END)
-        display_list = filtered_history if filtered_history else self.history
-        
-        for i, task in enumerate(display_list, 1):
-            self.history_text.insert(tk.END, f"{i}. {task}\n")
-    
-    def apply_filter(self):
-        filter_type = self.filter_type.get()
-        if filter_type == "Все":
-            self.update_history_display()
-            return
-        filtered = [task for task in self.history if f"[{filter_type}]" in task]
-        self.update_history_display(filtered)
-    
-    def reset_filter(self):
-        self.filter_type.set("Все")
-        self.update_history_display()
-    
-    def save_history(self):
+
         try:
-            data = {
-                "tasks": self.tasks,
-                "history": self.history
-            }
-            with open("task_history.json", "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
-            messagebox.showinfo("Успех", "История сохранена в task_history.json")
+            # Запрос к GitHub API
+            response = requests.get(f"https://api.github.com/users/{username}")
+
+            # Обработка статусов ответа
+            if response.status_code == 404:
+                messagebox.showwarning("Предупреждение", "Пользователь не найден!")
+                return
+            elif response.status_code == 403:
+                messagebox.showerror(
+                    "Ошибка",
+            "Превышен лимит запросов к API. Попробуйте позже."
+        )
+                return
+            elif response.status_code != 200:
+                messagebox.showerror("Ошибка", f"Ошибка API: {response.status_code}")
+                return
+
+            # Успешный ответ
+            user_data = response.json()
+            self.found_users = [user_data]
+            self.update_results_display()
+
+        except requests.exceptions.ConnectionError:
+            messagebox.showerror("Ошибка сети", "Проверьте подключение к интернету!")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Произошла ошибка: {e}")
+
+    def update_results_display(self):
+        self.results_text.delete(1.0, tk.END)
+        for user in self.found_users:
+            display_text = (
+                f"Имя: {user.get('name', 'Не указано')}\n"
+                f"Логин: {user['login']}\n"
+                f"Публичных репозиториев: {user['public_repos']}\n"
+                f"Подписчиков: {user['followers']}\n"
+                f"URL: {user['html_url']}\n"
+                f"{'-'*40}\n"
+            )
+            self.results_text.insert(tk.END, display_text)
+
+    def add_to_favorites(self):
+        if not self.found_users:
+            messagebox.showwarning("Предупреждение", "Сначала найдите пользователя!")
+            return
+
+        user = self.found_users[0]  # Берём первого найденного
+        if user not in self.favorites:
+            self.favorites.append(user)
+            messagebox.showinfo("Успех", f"Пользователь {user['login']} добавлен в избранное!")
+            self.update_favorites_display()
+        else:
+            messagebox.showinfo("Информация", "Этот пользователь уже в избранном!")
+
+    def remove_from_favorites(self):
+        selected_text = self.favorites_text.get("sel.first", "sel.last")
+        if not selected_text:
+            messagebox.showwarning("Предупреждение", "Выберите пользователя для удаления!")
+            return
+
+        # Извлекаем логин из выделенного текста
+        lines = selected_text.split('\n')
+        for line in lines:
+            if line.startswith("Логин: "):
+                login = line.replace("Логин: ", "")
+                break
+        else:
+            messagebox.showerror("Ошибка", "Не удалось определить пользователя!")
+            return
+
+        # Удаляем пользователя из избранного
+        self.favorites = [user for user in self.favorites if user['login'] != login]
+        messagebox.showinfo("Успех", f"Пользователь {login} удалён из избранного!")
+        self.update_favorites_display()
+
+    def update_favorites_display(self):
+        self.favorites_text.delete(1.0, tk.END)
+        for user in self.favorites:
+            display_text = (
+                f"Имя: {user.get('name', 'Не указано')}\n"
+                f"Логин: {user['login']}\n"
+                f"Публичных репозиториев: {user['public_repos']}\n"
+                f"Подписчиков: {user['followers']}\n"
+                f"URL: {user['html_url']}\n"
+                f"{'-'*40}\n"
+            )
+            self.favorites_text.insert(tk.END, display_text)
+
+    def save_favorites(self):
+        try:
+            with open("github_favorites.json", "w", encoding="utf-8") as f:
+                json.dump(self.favorites, f, ensure_ascii=False, indent=4)
+            messagebox.showinfo("Успех", "Избранное сохранено в github_favorites.json")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось сохранить: {e}")
-    
-    def load_history(self):
-        if os.path.exists("task_history.json"):
+
+    def load_favorites(self):
+        if os.path.exists("github_favorites.json"):
             try:
-                with open("task_history.json", "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    self.tasks = data.get("tasks", self.default_tasks)
-                    self.history = data.get("history", [])
-                self.update_history_display()
-                messagebox.showinfo("Успех", "Данные загружены из task_history.json")
+                with open("github_favorites.json", "r", encoding="utf-8") as f:
+                    self.favorites = json.load(f)
+                self.update_favorites_display()
+                messagebox.showinfo("Успех", "Данные загружены из github_favorites.json")
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Не удалось загрузить: {e}")
         else:
-            messagebox.showwarning("Предупреждение", "Файл истории не найден!")
+            messagebox.showwarning("Предупреждение", "Файл избранного не найден!")
 
-# Запуск приложения
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = RandomTaskGenerator(root)
-    root.mainloop()
+    def load_favorites(self):
+        """Загружает избранных пользователей из файла"""
+        if os.path.exists("github_favorites.json"):
+            try:
